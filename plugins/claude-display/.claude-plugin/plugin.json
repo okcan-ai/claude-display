@@ -1,0 +1,6 @@
+{
+  "name": "claude-display",
+  "description": "Visual companion dashboard for Claude Code",
+  "version": "1.0.0",
+  "author": { "name": "okcan-ai" }
+}

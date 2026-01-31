@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "okcan-ai-plugins",
+  "description": "Claude Code plugins by okcan-ai",
+  "owner": { "name": "okcan-ai" },
+  "plugins": [
+    {
+      "name": "claude-display",
+      "description": "Visual companion dashboard for Claude Code - push images, HTML, markdown, charts, and interactive panels to a persistent browser display",
+      "version": "1.0.0",
+      "author": { "name": "okcan-ai" },
+      "source": "./plugins/claude-display",
+      "category": "development"
+    }
+  ]
+}

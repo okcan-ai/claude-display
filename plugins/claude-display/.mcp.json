@@ -1,0 +1,9 @@
+{
+  "claude-display": {
+    "command": "bun",
+    "args": ["--install=fallback", "src/index.ts"],
+    "env": {
+      "DISPLAY_PORT": "7890"
+    }
+  }
+}

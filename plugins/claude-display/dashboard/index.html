@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Display</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --border: #30363d;
+  --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff; --accent2: #3fb950;
+  --warn: #d29922; --error: #f85149; --info: #58a6ff; --success: #3fb950;
+  --radius: 8px; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; overflow: hidden; }
+
+/* Layout */
+#app { display: flex; flex-direction: column; height: 100vh; }
+#header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px; background: var(--bg2); border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#header h1 { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+#header .status { width: 8px; height: 8px; border-radius: 50%; background: var(--error); }
+#header .status.connected { background: var(--success); }
+#header .right { display: flex; align-items: center; gap: 12px; }
+#header .session-count { font-size: 12px; color: var(--text2); }
+#header button {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+  padding: 4px 12px; border-radius: var(--radius); cursor: pointer; font-size: 12px;
+}
+#header button:hover { border-color: var(--accent); }
+
+/* Tabs */
+#tabs {
+  display: flex; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--border);
+  padding: 0 16px; flex-shrink: 0; overflow-x: auto;
+}
+.tab {
+  padding: 8px 16px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent;
+  font-size: 13px; white-space: nowrap; position: relative; user-select: none;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab .badge {
+  position: absolute; top: 4px; right: 4px; background: var(--accent);
+  color: #000; font-size: 10px; border-radius: 10px; padding: 0 5px; min-width: 16px;
+  text-align: center; display: none;
+}
+.tab .badge.show { display: block; }
+
+/* Main area */
+#main { display: flex; flex: 1; overflow: hidden; }
+#feed-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+#panels-sidebar {
+  width: 320px; border-left: 1px solid var(--border); overflow-y: auto;
+  background: var(--bg2); display: none; flex-shrink: 0;
+}
+#panels-sidebar.has-panels { display: block; }
+.panel-item {
+  border-bottom: 1px solid var(--border); padding: 12px;
+}
+.panel-item .panel-header {
+  font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 8px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.panel-item .panel-body { font-size: 13px; line-height: 1.5; }
+
+/* Cards */
+.card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; position: relative;
+}
+.card .card-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.card .card-title { font-weight: 600; font-size: 14px; }
+.card .session-badge {
+  font-size: 10px; padding: 1px 6px; border-radius: 10px; font-family: var(--mono);
+}
+.card .card-time { font-size: 11px; color: var(--text2); margin-left: auto; }
+.card .card-body { line-height: 1.6; }
+.card .card-body img { max-width: 100%; border-radius: 4px; margin: 8px 0; }
+.card .card-body pre { background: var(--bg); border-radius: 4px; padding: 12px; overflow-x: auto; margin: 8px 0; }
+.card .card-body code { font-family: var(--mono); font-size: 13px; }
+.card .card-body p { margin: 4px 0; }
+.card .card-body table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.card .card-body th, .card .card-body td { padding: 6px 10px; border: 1px solid var(--border); text-align: left; font-size: 13px; }
+.card .card-body th { background: var(--bg3); font-weight: 600; }
+.card .caption { font-size: 12px; color: var(--text2); margin-top: 8px; font-style: italic; }
+
+/* Chart container */
+.chart-container { position: relative; max-height: 400px; margin: 8px 0; }
+.chart-container canvas { max-height: 380px; }
+
+/* Prompt form */
+.prompt-form { margin-top: 12px; }
+.prompt-form .prompt-text { font-size: 14px; margin-bottom: 12px; }
+.prompt-form .prompt-inputs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.prompt-form input[type="text"] {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 12px; border-radius: var(--radius); font-size: 13px; min-width: 200px;
+}
+.prompt-form select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 12px; border-radius: var(--radius); font-size: 13px;
+}
+.prompt-form button {
+  background: var(--accent); color: #000; border: none; padding: 6px 16px;
+  border-radius: var(--radius); cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.prompt-form button:hover { opacity: 0.9; }
+.prompt-form.answered { opacity: 0.5; pointer-events: none; }
+
+/* Toasts */
+#toasts { position: fixed; top: 16px; right: 16px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; max-width: 400px; }
+.toast {
+  padding: 12px 16px; border-radius: var(--radius); color: var(--text); font-size: 13px;
+  animation: slideIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.toast .toast-title { font-weight: 600; }
+.toast.info { background: #0c2d6b; border: 1px solid var(--info); }
+.toast.success { background: #0d2818; border: 1px solid var(--success); }
+.toast.warning { background: #3b2607; border: 1px solid var(--warn); }
+.toast.error { background: #3c1014; border: 1px solid var(--error); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Empty state */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: var(--text2); gap: 8px; }
+.empty-state .icon { font-size: 48px; opacity: 0.3; }
+.empty-state p { font-size: 14px; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <h1><span class="status" id="connStatus"></span> Claude Display</h1>
+    <div class="right">
+      <span class="session-count" id="sessionCount"></span>
+      <button id="clearBtn" title="Clear all (Ctrl+L)">Clear</button>
+    </div>
+  </div>
+  <div id="tabs"></div>
+  <div id="main">
+    <div id="feed-container">
+      <div class="empty-state" id="emptyState">
+        <div class="icon">&#9671;</div>
+        <p>Waiting for content from Claude...</p>
+        <p style="font-size:12px">Tools like <code>display</code>, <code>display_image</code>, <code>display_code</code> will appear here</p>
+      </div>
+    </div>
+    <div id="panels-sidebar"></div>
+  </div>
+  <div id="toasts"></div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ── State ──
+  const state = {
+    ws: null,
+    connected: false,
+    channels: { general: [] },
+    activeChannel: 'general',
+    panels: new Map(),
+    unread: {},
+    sessions: new Set(),
+    renderers: {},
+    answeredPrompts: new Set(),
+  };
+
+  // ── Session colors ──
+  const SESSION_COLORS = [
+    '#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff',
+    '#f778ba', '#79c0ff', '#56d364', '#e3b341', '#ff7b72',
+  ];
+  const sessionColorMap = {};
+  let colorIndex = 0;
+  function getSessionColor(sid) {
+    if (!sessionColorMap[sid]) {
+      sessionColorMap[sid] = SESSION_COLORS[colorIndex % SESSION_COLORS.length];
+      colorIndex++;
+    }
+    return sessionColorMap[sid];
+  }
+
+  // ── DOM refs ──
+  const $status = document.getElementById('connStatus');
+  const $tabs = document.getElementById('tabs');
+  const $feed = document.getElementById('feed-container');
+  const $panels = document.getElementById('panels-sidebar');
+  const $toasts = document.getElementById('toasts');
+  const $empty = document.getElementById('emptyState');
+  const $clearBtn = document.getElementById('clearBtn');
+  const $sessionCount = document.getElementById('sessionCount');
+
+  // ── Marked config ──
+  marked.setOptions({
+    highlight: (code, lang) => {
+      if (lang && hljs.getLanguage(lang)) {
+        return hljs.highlight(code, { language: lang }).value;
+      }
+      return hljs.highlightAuto(code).value;
+    },
+    breaks: true,
+  });
+
+  // ── Renderers ──
+  function registerRenderer(kind, fn) {
+    state.renderers[kind] = fn;
+  }
+
+  // Built-in renderers
+  registerRenderer('markdown', (msg, container) => {
+    container.innerHTML = DOMPurify.sanitize(marked.parse(msg.content || ''));
+  });
+
+  registerRenderer('html', (msg, container) => {
+    container.innerHTML = DOMPurify.sanitize(msg.content || '');
+  });
+
+  registerRenderer('text', (msg, container) => {
+    const pre = document.createElement('pre');
+    pre.style.whiteSpace = 'pre-wrap';
+    pre.textContent = msg.content || '';
+    container.appendChild(pre);
+  });
+
+  registerRenderer('image', (msg, container) => {
+    const img = document.createElement('img');
+    if (msg.format === 'url') {
+      img.src = msg.data;
+    } else if (msg.format === 'base64' || msg.format === 'png' || msg.format === 'jpg' || msg.format === 'gif') {
+      const mime = msg.format === 'jpg' ? 'jpeg' : (msg.format === 'base64' ? 'png' : msg.format);
+      img.src = `data:image/${mime};base64,${msg.data}`;
+    } else if (msg.format === 'svg') {
+      container.innerHTML = DOMPurify.sanitize(msg.data);
+      if (msg.caption) {
+        const cap = document.createElement('div');
+        cap.className = 'caption';
+        cap.textContent = msg.caption;
+        container.appendChild(cap);
+      }
+      return;
+    }
+    img.style.maxWidth = '100%';
+    img.style.borderRadius = '4px';
+    container.appendChild(img);
+    if (msg.caption) {
+      const cap = document.createElement('div');
+      cap.className = 'caption';
+      cap.textContent = msg.caption;
+      container.appendChild(cap);
+    }
+  });
+
+  registerRenderer('code', (msg, container) => {
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    if (msg.language && hljs.getLanguage(msg.language)) {
+      code.innerHTML = hljs.highlight(msg.code || '', { language: msg.language }).value;
+      code.className = `language-${msg.language}`;
+    } else {
+      code.textContent = msg.code || '';
+    }
+    pre.appendChild(code);
+    container.appendChild(pre);
+  });
+
+  registerRenderer('chart', (msg, container) => {
+    if (msg.chartType === 'table') {
+      renderTable(msg, container);
+    } else {
+      renderChart(msg, container);
+    }
+  });
+
+  function renderTable(msg, container) {
+    const data = msg.chartData;
+    if (!data || !data.headers || !data.rows) {
+      container.textContent = 'Invalid table data';
+      return;
+    }
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    data.headers.forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    data.rows.forEach(row => {
+      const tr = document.createElement('tr');
+      row.forEach(cell => {
+        const td = document.createElement('td');
+        td.textContent = String(cell);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    container.appendChild(table);
+  }
+
+  function renderChart(msg, container) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chart-container';
+    const canvas = document.createElement('canvas');
+    wrapper.appendChild(canvas);
+    container.appendChild(wrapper);
+    try {
+      new Chart(canvas, {
+        type: msg.chartType,
+        data: msg.chartData,
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { labels: { color: '#e6edf3' } } },
+          scales: msg.chartType === 'pie' || msg.chartType === 'doughnut' ? {} : {
+            x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+            y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+          },
+        },
+      });
+    } catch (e) {
+      container.textContent = 'Chart rendering error: ' + e.message;
+    }
+  }
+
+  registerRenderer('prompt', (msg, container) => {
+    const form = document.createElement('div');
+    form.className = 'prompt-form';
+    if (state.answeredPrompts.has(msg.responseId)) {
+      form.classList.add('answered');
+    }
+    form.dataset.responseId = msg.responseId;
+
+    const promptText = document.createElement('div');
+    promptText.className = 'prompt-text';
+    promptText.textContent = msg.prompt || '';
+    form.appendChild(promptText);
+
+    const inputsDiv = document.createElement('div');
+    inputsDiv.className = 'prompt-inputs';
+    (msg.inputs || []).forEach(input => {
+      if (input.type === 'button') {
+        const btn = document.createElement('button');
+        btn.textContent = input.label;
+        btn.addEventListener('click', () => submitPromptResponse(msg.responseId, { [input.id]: input.label }, form));
+        inputsDiv.appendChild(btn);
+      } else if (input.type === 'text') {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.placeholder = input.placeholder || input.label;
+        inp.dataset.inputId = input.id;
+        inputsDiv.appendChild(inp);
+      } else if (input.type === 'select') {
+        const sel = document.createElement('select');
+        sel.dataset.inputId = input.id;
+        (input.options || []).forEach(opt => {
+          const o = document.createElement('option');
+          o.value = opt;
+          o.textContent = opt;
+          sel.appendChild(o);
+        });
+        inputsDiv.appendChild(sel);
+      }
+    });
+
+    // Submit button for text/select inputs
+    const hasNonButton = (msg.inputs || []).some(i => i.type !== 'button');
+    if (hasNonButton) {
+      const submit = document.createElement('button');
+      submit.textContent = 'Submit';
+      submit.addEventListener('click', () => {
+        const values = {};
+        inputsDiv.querySelectorAll('[data-input-id]').forEach(el => {
+          values[el.dataset.inputId] = el.value;
+        });
+        submitPromptResponse(msg.responseId, values, form);
+      });
+      inputsDiv.appendChild(submit);
+    }
+
+    form.appendChild(inputsDiv);
+    container.appendChild(form);
+  });
+
+  registerRenderer('interactive', (msg, container) => {
+    const div = document.createElement('div');
+    div.innerHTML = DOMPurify.sanitize(msg.html || '');
+    div.querySelectorAll('[data-callback-id]').forEach(el => {
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', () => {
+        const callbackId = el.dataset.callbackId;
+        sendWs({ responseId: callbackId, value: { clicked: callbackId }, timestamp: Date.now() });
+      });
+    });
+    container.appendChild(div);
+  });
+
+  function submitPromptResponse(responseId, values, formEl) {
+    state.answeredPrompts.add(responseId);
+    sendWs({ responseId, value: values, timestamp: Date.now() });
+    formEl.classList.add('answered');
+  }
+
+  // ── WebSocket ──
+  let reconnectTimer = null;
+  function connectWs() {
+    const wsUrl = `ws://${location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
+    state.ws = ws;
+
+    ws.onopen = () => {
+      state.connected = true;
+      $status.classList.add('connected');
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      loadHistory();
+    };
+
+    ws.onclose = () => {
+      state.connected = false;
+      $status.classList.remove('connected');
+      reconnectTimer = setTimeout(connectWs, 2000);
+    };
+
+    ws.onerror = () => {
+      ws.close();
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        handleMessage(msg);
+      } catch {}
+    };
+  }
+
+  function sendWs(data) {
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+      state.ws.send(JSON.stringify(data));
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      const res = await fetch('/api/history');
+      const { messages, channels } = await res.json();
+      // Reset state
+      state.channels = {};
+      channels.forEach(ch => { state.channels[ch] = []; });
+      if (!state.channels.general) state.channels.general = [];
+      messages.forEach(msg => {
+        const ch = msg.channel || 'general';
+        if (!state.channels[ch]) state.channels[ch] = [];
+        state.channels[ch].push(msg);
+        state.sessions.add(msg.sessionId);
+      });
+      renderTabs();
+      renderFeed();
+      renderPanelsFromHistory(messages);
+      updateSessionCount();
+    } catch {}
+  }
+
+  function renderPanelsFromHistory(messages) {
+    state.panels.clear();
+    messages.forEach(msg => {
+      if (msg.kind === 'panel_create') {
+        state.panels.set(msg.panelId, { id: msg.panelId, title: msg.panelTitle, content: msg.panelContent, position: msg.panelPosition });
+      } else if (msg.kind === 'panel_update') {
+        const p = state.panels.get(msg.panelId);
+        if (p) {
+          if (msg.panelContent) p.content = msg.panelContent;
+          if (msg.panelTitle) p.title = msg.panelTitle;
+        }
+      } else if (msg.kind === 'panel_remove') {
+        state.panels.delete(msg.panelId);
+      }
+    });
+    renderPanels();
+  }
+
+  // ── Message handling ──
+  function handleMessage(msg) {
+    state.sessions.add(msg.sessionId);
+    updateSessionCount();
+
+    // Special kinds that don't go to feed
+    if (msg.kind === 'notification') {
+      showToast(msg);
+      return;
+    }
+    if (msg.kind === 'clear') {
+      handleClear(msg);
+      return;
+    }
+    if (msg.kind === 'channel_create') {
+      const ch = msg.channelName || msg.channel;
+      if (!state.channels[ch]) state.channels[ch] = [];
+      renderTabs();
+      return;
+    }
+    if (msg.kind === 'register_renderer') {
+      try {
+        const fn = new Function('msg', 'container', msg.jsCode);
+        registerRenderer(msg.rendererKind, fn);
+      } catch (e) {
+        console.error('Failed to register renderer:', e);
+      }
+      return;
+    }
+
+    // Panel messages
+    if (msg.kind === 'panel_create') {
+      state.panels.set(msg.panelId, { id: msg.panelId, title: msg.panelTitle, content: msg.panelContent, position: msg.panelPosition });
+      renderPanels();
+      return;
+    }
+    if (msg.kind === 'panel_update') {
+      const p = state.panels.get(msg.panelId);
+      if (p) {
+        if (msg.panelContent) p.content = msg.panelContent;
+        if (msg.panelTitle) p.title = msg.panelTitle;
+        renderPanels();
+      }
+      return;
+    }
+    if (msg.kind === 'panel_remove') {
+      state.panels.delete(msg.panelId);
+      renderPanels();
+      return;
+    }
+
+    // Regular feed messages
+    const ch = msg.channel || 'general';
+    if (!state.channels[ch]) state.channels[ch] = [];
+    state.channels[ch].push(msg);
+    if (ch === state.activeChannel) {
+      appendCard(msg);
+    } else {
+      state.unread[ch] = (state.unread[ch] || 0) + 1;
+      renderTabs();
+    }
+  }
+
+  function handleClear(msg) {
+    const target = msg.content;
+    if (target === '__all__') {
+      Object.keys(state.channels).forEach(ch => { state.channels[ch] = []; });
+      state.panels.clear();
+      renderFeed();
+      renderPanels();
+    } else if (target === '__panels__') {
+      state.panels.clear();
+      renderPanels();
+    } else {
+      if (state.channels[target]) state.channels[target] = [];
+      if (target === state.activeChannel) renderFeed();
+    }
+  }
+
+  // ── Rendering ──
+  function renderTabs() {
+    $tabs.innerHTML = '';
+    const channels = Object.keys(state.channels);
+    channels.forEach(ch => {
+      const tab = document.createElement('div');
+      tab.className = 'tab' + (ch === state.activeChannel ? ' active' : '');
+      tab.textContent = ch;
+      const badge = document.createElement('span');
+      badge.className = 'badge' + ((state.unread[ch] || 0) > 0 ? ' show' : '');
+      badge.textContent = state.unread[ch] || '';
+      tab.appendChild(badge);
+      tab.addEventListener('click', () => switchChannel(ch));
+      $tabs.appendChild(tab);
+    });
+  }
+
+  function switchChannel(ch) {
+    state.activeChannel = ch;
+    state.unread[ch] = 0;
+    renderTabs();
+    renderFeed();
+  }
+
+  function renderFeed() {
+    $feed.innerHTML = '';
+    const msgs = state.channels[state.activeChannel] || [];
+    if (msgs.length === 0) {
+      $feed.appendChild($empty.cloneNode(true));
+      return;
+    }
+    msgs.forEach(msg => appendCard(msg, false));
+    $feed.scrollTop = $feed.scrollHeight;
+  }
+
+  function appendCard(msg, scroll = true) {
+    // Remove empty state if present
+    const empty = $feed.querySelector('.empty-state');
+    if (empty) empty.remove();
+
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'card-header';
+    if (msg.title) {
+      const title = document.createElement('span');
+      title.className = 'card-title';
+      title.textContent = msg.title;
+      header.appendChild(title);
+    }
+    const badge = document.createElement('span');
+    badge.className = 'session-badge';
+    badge.textContent = msg.sessionId.slice(0, 6);
+    badge.style.background = getSessionColor(msg.sessionId) + '22';
+    badge.style.color = getSessionColor(msg.sessionId);
+    header.appendChild(badge);
+    const time = document.createElement('span');
+    time.className = 'card-time';
+    time.textContent = new Date(msg.timestamp).toLocaleTimeString();
+    header.appendChild(time);
+    card.appendChild(header);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'card-body';
+    const renderer = state.renderers[msg.kind];
+    if (renderer) {
+      try { renderer(msg, body); } catch (e) {
+        body.textContent = `Render error: ${e.message}`;
+      }
+    } else {
+      body.textContent = msg.content || JSON.stringify(msg);
+    }
+    card.appendChild(body);
+    $feed.appendChild(card);
+
+    if (scroll) {
+      $feed.scrollTop = $feed.scrollHeight;
+    }
+  }
+
+  function renderPanels() {
+    $panels.innerHTML = '';
+    if (state.panels.size === 0) {
+      $panels.classList.remove('has-panels');
+      return;
+    }
+    $panels.classList.add('has-panels');
+    state.panels.forEach(panel => {
+      const item = document.createElement('div');
+      item.className = 'panel-item';
+      const header = document.createElement('div');
+      header.className = 'panel-header';
+      header.textContent = panel.title || panel.id;
+      item.appendChild(header);
+      const body = document.createElement('div');
+      body.className = 'panel-body';
+      body.innerHTML = DOMPurify.sanitize(marked.parse(panel.content || ''));
+      item.appendChild(body);
+      $panels.appendChild(item);
+    });
+  }
+
+  function showToast(msg) {
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + (msg.level || 'info');
+    if (msg.title) {
+      const t = document.createElement('div');
+      t.className = 'toast-title';
+      t.textContent = msg.title;
+      toast.appendChild(t);
+    }
+    const m = document.createElement('div');
+    m.textContent = msg.message || '';
+    toast.appendChild(m);
+    $toasts.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 5000);
+  }
+
+  function updateSessionCount() {
+    $sessionCount.textContent = state.sessions.size > 1 ? `${state.sessions.size} sessions` : '';
+  }
+
+  // ── Events ──
+  $clearBtn.addEventListener('click', () => {
+    fetch('/api/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: crypto.randomUUID(), kind: 'clear', channel: '__all__', content: '__all__', sessionId: 'browser', timestamp: Date.now() }),
+    });
+    Object.keys(state.channels).forEach(ch => { state.channels[ch] = []; });
+    state.panels.clear();
+    renderFeed();
+    renderPanels();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'l') { e.preventDefault(); $clearBtn.click(); }
+    if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+      e.preventDefault();
+      const channels = Object.keys(state.channels);
+      const idx = parseInt(e.key) - 1;
+      if (idx < channels.length) switchChannel(channels[idx]);
+    }
+  });
+
+  // ── Init ──
+  renderTabs();
+  connectWs();
+})();
+</script>
+</body>
+</html>
