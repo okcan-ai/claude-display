@@ -95,6 +95,36 @@ The plugin runs a Bun-based MCP server that:
 2. Starts an HTTP + WebSocket server serving the dashboard
 3. When multiple Claude sessions connect, subsequent ones run in relay mode -- forwarding messages to the existing hub
 
+## Troubleshooting
+
+### MCP server fails to connect / "spawn bun ENOENT" or path errors
+
+The `.mcp.json` file uses a relative path (`src/index.ts`) for the server entry point. This path is resolved relative to the **working directory** of the process, not the location of `.mcp.json` itself.
+
+If Claude Code cannot find `src/index.ts`, the installed `.mcp.json` may need an absolute path pointing to the actual install location. For example:
+
+```json
+{
+  "claude-display": {
+    "command": "bun",
+    "args": [
+      "--install=fallback",
+      "/Users/YOU/.claude/plugins/cache/okcan-ai-plugins/claude-display/1.0.0/src/index.ts"
+    ],
+    "env": {
+      "DISPLAY_PORT": "7890"
+    }
+  }
+}
+```
+
+Check these locations for the `.mcp.json` that Claude Code actually reads:
+
+- `~/.claude/plugins/cache/okcan-ai-plugins/claude-display/<version>/plugins/claude-display/.mcp.json`
+- `~/.claude/plugins/local/claude-display/.mcp.json`
+
+If the relative path isn't resolving, replace `src/index.ts` with the full absolute path to `src/index.ts` inside the installed plugin directory.
+
 ## License
 
 MIT
