@@ -260,6 +260,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
       }
       return;
     }
+    img.onerror = () => { img.alt = 'Failed to load image'; img.style.opacity = '0.3'; };
     img.style.maxWidth = '100%';
     img.style.borderRadius = '4px';
     container.appendChild(img);
@@ -366,7 +367,14 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
       if (input.type === 'button') {
         const btn = document.createElement('button');
         btn.textContent = input.label;
-        btn.addEventListener('click', () => submitPromptResponse(msg.responseId, { [input.id]: input.label }, form));
+        btn.addEventListener('click', () => {
+          const values = {};
+          inputsDiv.querySelectorAll('[data-input-id]').forEach(el => {
+            values[el.dataset.inputId] = el.value;
+          });
+          values[input.id] = input.label;
+          submitPromptResponse(msg.responseId, values, form);
+        });
         inputsDiv.appendChild(btn);
       } else if (input.type === 'text') {
         const inp = document.createElement('input');
@@ -387,9 +395,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
       }
     });
 
-    // Submit button for text/select inputs
+    // Submit button for text/select inputs (skip if explicit buttons exist)
     const hasNonButton = (msg.inputs || []).some(i => i.type !== 'button');
-    if (hasNonButton) {
+    const hasButton = (msg.inputs || []).some(i => i.type === 'button');
+    if (hasNonButton && !hasButton) {
       const submit = document.createElement('button');
       submit.textContent = 'Submit';
       submit.addEventListener('click', () => {
@@ -420,6 +429,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   });
 
   function submitPromptResponse(responseId, values, formEl) {
+    if (state.answeredPrompts.has(responseId)) return;
     state.answeredPrompts.add(responseId);
     sendWs({ responseId, value: values, timestamp: Date.now() });
     formEl.classList.add('answered');
@@ -453,13 +463,15 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
       try {
         const msg = JSON.parse(evt.data);
         handleMessage(msg);
-      } catch {}
+      } catch (e) { console.warn('WebSocket message error:', e); }
     };
   }
 
   function sendWs(data) {
     if (state.ws && state.ws.readyState === WebSocket.OPEN) {
       state.ws.send(JSON.stringify(data));
+    } else {
+      console.warn('WebSocket not connected, message dropped:', data);
     }
   }
 
@@ -481,7 +493,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
       renderFeed();
       renderPanelsFromHistory(messages);
       updateSessionCount();
-    } catch {}
+    } catch (e) { console.warn('Failed to load history:', e); }
   }
 
   function renderPanelsFromHistory(messages) {
@@ -492,8 +504,8 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
       } else if (msg.kind === 'panel_update') {
         const p = state.panels.get(msg.panelId);
         if (p) {
-          if (msg.panelContent) p.content = msg.panelContent;
-          if (msg.panelTitle) p.title = msg.panelTitle;
+          if (msg.panelContent !== undefined) p.content = msg.panelContent;
+          if (msg.panelTitle !== undefined) p.title = msg.panelTitle;
         }
       } else if (msg.kind === 'panel_remove') {
         state.panels.delete(msg.panelId);
@@ -541,8 +553,8 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     if (msg.kind === 'panel_update') {
       const p = state.panels.get(msg.panelId);
       if (p) {
-        if (msg.panelContent) p.content = msg.panelContent;
-        if (msg.panelTitle) p.title = msg.panelTitle;
+        if (msg.panelContent !== undefined) p.content = msg.panelContent;
+        if (msg.panelTitle !== undefined) p.title = msg.panelTitle;
         renderPanels();
       }
       return;
